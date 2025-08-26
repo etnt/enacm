@@ -1,0 +1,19 @@
+[package]
+name = "nacm_nif"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "nacm_nif"
+crate-type = ["cdylib"]
+
+
+[dependencies]
+rustler = "0.36.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+nacm-rust-prototype = { path = "../../../nacm-rust-prototype" }
+
+[profile.release]
+lto = true
+codegen-units = 1

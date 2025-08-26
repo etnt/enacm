@@ -1,0 +1,9 @@
+{application, nacm_nif, [
+    {description, "NACM NIF Erlang library using Rust validator"},
+    {vsn, "0.1.0"},
+    {modules, [nacm_nif]},
+    {registered, []},
+    {applications, [kernel, stdlib]},
+    {env, []},
+    {mod, {nacm_nif_app, []}}
+]}.
