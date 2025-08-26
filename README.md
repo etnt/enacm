@@ -164,6 +164,40 @@ Tests a guest user performing a denied exec operation.
 nacm_nif:validate(YourConfigXml, YourRequestJson).
 ```
 
+## Testing
+
+The project includes a comprehensive Lux test suite that validates all functionality:
+
+### Running Tests
+
+```bash
+# Run all tests
+make test
+```
+
+The test suite includes 11 comprehensive tests covering:
+
+- **Basic functionality**: permit/deny examples with jsx and manual JSON encoding
+- **Direct API calls**: Testing `nacm_nif:validate/2` directly
+- **Error handling**: Invalid XML configs and JSON requests
+- **Edge cases**: Unknown users, different RPC operations
+- **jsx encoding verification**: Binary vs string encoding correctness
+
+### Test Details
+
+1. **Test 1-4**: Basic examples (jsx/manual JSON, permit/deny)
+2. **Test 5-6**: Direct API usage (valid admin, invalid guest)
+3. **Test 7-8**: Error handling (bad XML, bad JSON)
+4. **Test 9**: jsx binary encoding verification
+5. **Test 10**: Unknown user "bill" denial
+6. **Test 11**: Different RPC operation denial
+
+All tests run automatically and provide detailed progress output. Test logs are stored in `nacm_nif/test/lux_logs/` with HTML reports for detailed analysis.
+
+### Test Requirements
+
+The Lux test framework is automatically installed as a dependency via rebar3. No additional setup is required beyond the standard build prerequisites.
+
 ## Project Structure
 
 ```
@@ -178,6 +212,9 @@ enacm/
     │   ├── nacm_nif.app.src    # Application resource file
     │   ├── nacm_nif_app.erl    # Application behavior
     │   └── nacm_nif_sup.erl    # Supervisor
+    ├── test/                   # Lux test suite
+    │   ├── run.lux             # Main test file (11 comprehensive tests)
+    │   └── common.luxinc       # Common test utilities
     ├── native/nacm_nif/        # Rust NIF implementation
     │   ├── src/lib.rs          # NIF functions
     │   └── Cargo.toml          # Rust dependencies
@@ -237,15 +274,6 @@ rm -rf priv/nacm_nif.so native/nacm_nif/target
 rebar3 compile
 ```
 
-### Adding Tests
-
-Add tests to `nacm_nif/test/` directory and run with:
-
-```bash
-cd nacm_nif
-rebar3 eunit
-```
-
 ### Rebuilding
 
 ```bash
@@ -257,6 +285,10 @@ make
 cd nacm_nif
 rebar3 clean compile
 ```
+
+### Running Tests
+
+See the [Testing](#testing) section above for comprehensive test coverage using the Lux test framework.
 
 ## Dependencies
 

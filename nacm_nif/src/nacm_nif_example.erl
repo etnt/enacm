@@ -16,11 +16,12 @@
 permit_example() ->
     ConfigXml = sample_config(),
     %% Example: user 'admin' with exec operation on 'edit-config' RPC
+    %% Use binaries to avoid jsx treating strings as character arrays
     Request = #{
-        user => "admin",
+        user => <<"admin">>,
         module_name => null,
-        rpc_name => "edit-config",
-        operation => "exec",
+        rpc_name => <<"edit-config">>,
+        operation => <<"exec">>,
         path => null
     },
     RequestJson = jsx:encode(Request),
@@ -29,11 +30,12 @@ permit_example() ->
 deny_example() ->
     ConfigXml = sample_config(),
     %% Example: user 'guest' with exec operation on 'edit-config' RPC
+    %% Use binaries to avoid jsx treating strings as character arrays
     Request = #{
-        user => "guest",
+        user => <<"guest">>,
         module_name => null,
-        rpc_name => "edit-config",
-        operation => "exec",
+        rpc_name => <<"edit-config">>,
+        operation => <<"exec">>,
         path => null
     },
     RequestJson = jsx:encode(Request),

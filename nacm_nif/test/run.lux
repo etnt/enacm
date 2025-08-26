@@ -1,0 +1,121 @@
+[doc Test NACM validation with comprehensive test cases]
+
+[include common.luxinc]
+
+[shell nacm_tests]
+    -$fail_pattern
+    [invoke log "Starting NACM NIF validation tests"]
+    !erl -pa ../_build/default/lib/*/ebin
+    ?$eprompt
+
+    # Test 1: Permit example with jsx encoding
+    [invoke log "Test 1: Admin user permit example (jsx)"]
+    !nacm_nif_example:permit_example().
+    ?true
+    ?$eprompt
+
+    # Test 2: Deny example with jsx encoding  
+    [invoke log "Test 2: Guest user deny example (jsx)"]
+    !nacm_nif_example:deny_example().
+    ?false
+    ?$eprompt
+
+    # Test 3: Permit example with manual JSON encoding
+    [invoke log "Test 3: Admin user permit example (manual JSON)"]
+    !nacm_nif_example:permit_example_manual().
+    ?true
+    ?$eprompt
+
+    # Test 4: Deny example with manual JSON encoding
+    [invoke log "Test 4: Guest user deny example (manual JSON)"]
+    !nacm_nif_example:deny_example_manual().
+    ?false
+    ?$eprompt
+
+    # Test 5: Direct API usage - valid request
+    [invoke log "Test 5: Direct API call - valid admin request"]
+    ~Config = "<config xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-acm\">
+    ~<nacm>
+    ~<enable-nacm>true</enable-nacm>
+    ~<read-default>deny</read-default>
+    ~<write-default>deny</write-default>
+    ~<exec-default>deny</exec-default>
+    ~<groups>
+    ~<group>
+    ~<name>admin</name>
+    ~<user-name>admin</user-name>
+    ~</group>
+    ~</groups>
+    ~<rule-list>
+    ~<name>admin-rules</name>
+    ~<group>admin</group>
+    ~<rule>
+    ~<name>permit-admin-exec</name>
+    ~<access-operations>exec</access-operations>
+    ~<action>permit</action>
+    ~<rpc-name>edit-config</rpc-name>
+    ~</rule>
+    ~</rule-list>
+    ~</nacm>
+    !</config>".
+    ?$eprompt
+    !Request = "{\"user\":\"admin\",\"module_name\":null,\"rpc_name\":\"edit-config\",\"operation\":\"exec\",\"path\":null}".
+    ?$eprompt
+    !nacm_nif:validate(list_to_binary(Config), list_to_binary(Request)).
+    ?true
+    ?$eprompt
+
+    # Test 6: Direct API usage - invalid request
+    [invoke log "Test 6: Direct API call - invalid guest request"]
+    !RequestGuest = "{\"user\":\"guest\",\"module_name\":null,\"rpc_name\":\"edit-config\",\"operation\":\"exec\",\"path\":null}".
+    ?$eprompt
+    !nacm_nif:validate(list_to_binary(Config), list_to_binary(RequestGuest)).
+    ?false
+    ?$eprompt
+
+    # Test 7: Error handling - invalid XML config
+    [invoke log "Test 7: Error handling - invalid XML config"]
+    !BadConfig = "invalid xml".
+    ?$eprompt
+    !nacm_nif:validate(list_to_binary(BadConfig), list_to_binary(Request)).
+    ?false
+    ?$eprompt
+
+    # Test 8: Error handling - invalid JSON request
+    [invoke log "Test 8: Error handling - invalid JSON request"]
+    !BadRequest = "invalid json".
+    ?$eprompt
+    !nacm_nif:validate(list_to_binary(Config), list_to_binary(BadRequest)).
+    ?false
+    ?$eprompt
+
+    # Test 9: jsx encoding verification - ensure binaries work correctly
+    [invoke log "Test 9: jsx binary vs string encoding verification"]
+    !BinaryMap = #{user => <<"admin">>, rpc_name => <<"edit-config">>, operation => <<"exec">>, module_name => null, path => null}.
+    ?$eprompt
+    !JsonBinary = jsx:encode(BinaryMap).
+    ?$eprompt
+    !nacm_nif:validate(list_to_binary(Config), JsonBinary).
+    ?true
+    ?$eprompt
+
+    # Test 10: Unknown user should be denied (not in admin group)
+    [invoke log "Test 10: Unknown user 'bill' should be denied"]
+    !UnknownUserRequest = "{\"user\":\"bill\",\"module_name\":null,\"rpc_name\":\"edit-config\",\"operation\":\"exec\",\"path\":null}".
+    ?$eprompt
+    !nacm_nif:validate(list_to_binary(Config), list_to_binary(UnknownUserRequest)).
+    ?false
+    ?$eprompt
+
+    # Test 11: Different RPC operation should be denied (not in rules)
+    [invoke log "Test 11: Different RPC operation should be denied"]
+    !DifferentRpcRequest = "{\"user\":\"admin\",\"module_name\":null,\"rpc_name\":\"get-config\",\"operation\":\"exec\",\"path\":null}".
+    ?$eprompt
+    !nacm_nif:validate(list_to_binary(Config), list_to_binary(DifferentRpcRequest)).
+    ?false
+    ?$eprompt
+
+    [invoke log "All NACM NIF tests completed successfully!"]
+    !erlang:halt().
+
+[cleanup]

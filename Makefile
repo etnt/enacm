@@ -3,7 +3,7 @@
 NACM_RUST_PROTO_REPO = https://github.com/etnt/nacm-rust-prototype.git
 NACM_NIF_DIR = nacm_nif
 
-.PHONY: all nif clean
+.PHONY: all nif clean test
 
 all: nacm-rust-prototype nif
 
@@ -17,3 +17,6 @@ nif: nacm-rust-prototype
 
 clean:
 	cd $(NACM_NIF_DIR) && rebar3 clean
+
+test:
+	(cd nacm_nif/test; ../_build/default/lib/lux/bin/lux run.lux)
