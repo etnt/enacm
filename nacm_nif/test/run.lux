@@ -115,6 +115,77 @@
     ?false
     ?$eprompt
 
+    # Test 12: Cache functionality
+    [invoke log "Test 12: Cache functionality - set config and use cached validation"]
+    !nacm_nif:set_config(list_to_binary(Config)).
+    ?$eprompt
+    !nacm_nif:validate_with_cache(list_to_binary(Request)).
+    ?true
+    ?$eprompt
+    !nacm_nif:validate_with_cache(list_to_binary(RequestGuest)).
+    ?false
+    ?$eprompt
+
+    # Test 13: Empty config leverages cache (validate/2 with empty config)
+    [invoke log "Test 13: Empty config leverages cached configuration"]
+    # First ensure we have a config cached from previous test
+    !nacm_nif:validate(list_to_binary(Config), list_to_binary(Request)).
+    ?true
+    ?$eprompt
+    # Now use empty config - should use cached config
+    !nacm_nif:validate(<<>>, list_to_binary(Request)).
+    ?true
+    ?$eprompt
+    # Test with guest user using empty config (should be denied by cached rules)
+    !nacm_nif:validate(<<>>, list_to_binary(RequestGuest)).
+    ?false
+    ?$eprompt
+    # Test that cache persists for subsequent empty config calls
+    !nacm_nif:validate(<<>>, list_to_binary(Request)).
+    ?true
+    ?$eprompt
+
+    # Test 14: Cache update when rules change
+    [invoke log "Test 14: Cache update when NACM rules change"]
+    # Create a different config that denies admin operations
+    ~NewConfig = "<config xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-acm\">
+    ~<nacm>
+    ~<enable-nacm>true</enable-nacm>
+    ~<read-default>deny</read-default>
+    ~<write-default>deny</write-default>
+    ~<exec-default>deny</exec-default>
+    ~<groups>
+    ~<group>
+    ~<name>admin</name>
+    ~<user-name>admin</user-name>
+    ~</group>
+    ~</groups>
+    ~<rule-list>
+    ~<name>admin-deny-rules</name>
+    ~<group>admin</group>
+    ~<rule>
+    ~<name>deny-admin-exec</name>
+    ~<access-operations>exec</access-operations>
+    ~<action>deny</action>
+    ~<rpc-name>edit-config</rpc-name>
+    ~</rule>
+    ~</rule-list>
+    ~</nacm>
+    !</config>".
+    ?$eprompt
+    # Update cache with new restrictive config
+    !nacm_nif:validate(list_to_binary(NewConfig), list_to_binary(Request)).
+    ?false
+    ?$eprompt
+    # Verify cache was updated by using empty config (should use new rules)
+    !nacm_nif:validate(<<>>, list_to_binary(Request)).
+    ?false
+    ?$eprompt
+    # Verify with validate_with_cache as well
+    !nacm_nif:validate_with_cache(list_to_binary(Request)).
+    ?false
+    ?$eprompt
+
     [invoke log "All NACM NIF tests completed successfully!"]
     !erlang:halt().
 

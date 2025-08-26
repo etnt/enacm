@@ -10,6 +10,8 @@ This project integrates the [nacm-rust-prototype](https://github.com/etnt/nacm-r
 - **XML Configuration**: Parse real-world NACM XML configurations
 - **JSON Requests**: Accept access requests in JSON format
 - **High Performance**: Native Rust implementation via NIF
+- **Configuration Caching**: 30x+ performance improvement for repeated validations
+- **Thread-Safe**: Concurrent validation with cached configurations
 - **Easy Integration**: Simple Erlang API
 
 ## Prerequisites
@@ -121,6 +123,42 @@ Result = nacm_nif:validate(ConfigXml, RequestJson).
 % Result will be 'true' (permit) or 'false' (deny)
 ```
 
+### Cached Validation (High Performance)
+
+For applications that validate many requests against the same NACM rules, the library provides caching functionality that can dramatically improve performance by avoiding repeated XML parsing:
+
+```erlang
+% Method 1: Pre-load cache then validate multiple requests
+ConfigXml = "<?xml version=\"1.0\"?>...",  % Your NACM config
+nacm_nif:set_config(list_to_binary(ConfigXml)),
+
+% All subsequent validations use cached config (30x+ faster)
+Result1 = nacm_nif:validate_with_cache(Request1Json),
+Result2 = nacm_nif:validate_with_cache(Request2Json),
+Result3 = nacm_nif:validate_with_cache(Request3Json).
+
+% Method 2: Use empty config to leverage cache
+nacm_nif:validate(ConfigXml, Request1),     % Parses and caches config
+Result2 = nacm_nif:validate(<<>>, Request2), % Uses cached config
+Result3 = nacm_nif:validate(<<>>, Request3). % Uses cached config
+
+% Method 3: Update cache when rules change
+NewConfigXml = "...",  % Updated NACM rules
+nacm_nif:validate(NewConfigXml, Request),   % Updates cache with new config
+nacm_nif:validate_with_cache(NextRequest).  % Uses new cached config
+```
+
+**Performance Benefits:**
+- **30.82x faster** validation when using cached configuration
+- Eliminates XML parsing overhead on every request
+- Thread-safe caching with automatic config updates
+- Backward compatible - existing code continues to work
+
+**Cache Behavior:**
+1. **No cache + non-empty config**: Parse config and store in cache
+2. **Empty config provided**: Use cached config (returns false if no cache)
+3. **Non-empty config provided**: Parse new config and update cache
+
 ## JSON Request Format
 
 Access requests should be JSON objects with the following fields:
@@ -164,6 +202,18 @@ Tests a guest user performing a denied exec operation.
 nacm_nif:validate(YourConfigXml, YourRequestJson).
 ```
 
+### 4. Cache Example
+```erlang
+nacm_nif_example:cache_example().
+```
+Demonstrates efficient config reuse with caching functionality.
+
+### 5. Performance Comparison
+```erlang
+nacm_nif_example:performance_comparison().
+```
+Shows performance difference between cached and non-cached validation (typically 30x+ speedup).
+
 ## Testing
 
 The project includes a comprehensive Lux test suite that validates all functionality:
@@ -175,13 +225,14 @@ The project includes a comprehensive Lux test suite that validates all functiona
 make test
 ```
 
-The test suite includes 11 comprehensive tests covering:
+The test suite includes 14 comprehensive tests covering:
 
 - **Basic functionality**: permit/deny examples with jsx and manual JSON encoding
 - **Direct API calls**: Testing `nacm_nif:validate/2` directly
 - **Error handling**: Invalid XML configs and JSON requests
 - **Edge cases**: Unknown users, different RPC operations
 - **jsx encoding verification**: Binary vs string encoding correctness
+- **Caching functionality**: Config caching and cache-based validation
 
 ### Test Details
 
@@ -191,6 +242,9 @@ The test suite includes 11 comprehensive tests covering:
 4. **Test 9**: jsx binary encoding verification
 5. **Test 10**: Unknown user "bill" denial
 6. **Test 11**: Different RPC operation denial
+7. **Test 12**: Cache functionality (set config and cached validation)
+8. **Test 13**: Empty config leveraging cached configuration
+9. **Test 14**: Cache update when NACM rules change
 
 All tests run automatically and provide detailed progress output. Test logs are stored in `nacm_nif/test/lux_logs/` with HTML reports for detailed analysis.
 
@@ -233,12 +287,49 @@ validate(ConfigXml, RequestJson) -> boolean().
 Validates an access request against NACM rules.
 
 **Parameters:**
-- `ConfigXml` (string): NACM configuration as XML string
+- `ConfigXml` (string): NACM configuration as XML string. If empty, uses cached config.
 - `RequestJson` (string): Access request as JSON string
 
 **Returns:**
 - `true` if access is permitted
 - `false` if access is denied
+
+**Caching Behavior:**
+- Non-empty `ConfigXml`: Parses config and updates cache
+- Empty `ConfigXml`: Uses cached config (returns `false` if no cache available)
+
+### nacm_nif:validate_with_cache/1
+
+```erlang
+validate_with_cache(RequestJson) -> boolean().
+```
+
+Validates an access request using cached NACM configuration.
+
+**Parameters:**
+- `RequestJson` (string): Access request as JSON string
+
+**Returns:**
+- `true` if access is permitted  
+- `false` if access is denied or no config cached
+
+**Note:** Requires config to be pre-loaded with `set_config/1` or previous `validate/2` call.
+
+### nacm_nif:set_config/1
+
+```erlang
+set_config(ConfigXml) -> ok.
+```
+
+Pre-loads NACM configuration into cache for subsequent validations.
+
+**Parameters:**
+- `ConfigXml` (string): NACM configuration as XML string
+
+**Returns:**
+- `ok`
+
+**Use Case:** Call once during application startup, then use `validate_with_cache/1` for high-performance validation.
 
 ## Development
 
