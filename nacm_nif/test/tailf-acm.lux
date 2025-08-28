@@ -1,201 +1,12 @@
-[doc Test NACM validation with comprehensive test cases]
+[doc Test Tail-f ACM extension functionality]
 
 [include common.luxinc]
 
-[shell nacm_tests]
+[shell tailf_acm_tests]
     -$fail_pattern
-    [invoke log "Starting NACM NIF validation tests"]
+    [invoke log "Starting Tail-f ACM extension tests"]
     !erl -pa ../_build/default/lib/*/ebin
     ?$eprompt
-
-    # Test 1: Permit example with jsx encoding
-    [invoke log "Test 1: Admin user permit example (jsx)"]
-    !{Permitted1, ShouldLog1} = nacm_nif_example:permit_example().
-    !io:format("Test 1 result: permitted=~p, should_log=~p~n", [Permitted1, ShouldLog1]).
-    ?Test 1 result: permitted=true, should_log=false
-    ?$eprompt
-
-    # Test 2: Deny example with jsx encoding  
-    [invoke log "Test 2: Guest user deny example (jsx)"]
-    !{Permitted2, ShouldLog2} = nacm_nif_example:deny_example().
-    !io:format("Test 2 result: permitted=~p, should_log=~p~n", [Permitted2, ShouldLog2]).
-    ?Test 2 result: permitted=false, should_log=false
-    ?$eprompt
-
-    # Test 3: Permit example with manual JSON encoding
-    [invoke log "Test 3: Admin user permit example (manual JSON)"]
-    !{Permitted3, ShouldLog3} = nacm_nif_example:permit_example_manual().
-    !io:format("Test 3 result: permitted=~p, should_log=~p~n", [Permitted3, ShouldLog3]).
-    ?Test 3 result: permitted=true, should_log=false
-    ?$eprompt
-
-    # Test 4: Deny example with manual JSON encoding
-    [invoke log "Test 4: Guest user deny example (manual JSON)"]
-    !{Permitted4, ShouldLog4} = nacm_nif_example:deny_example_manual().
-    !io:format("Test 4 result: permitted=~p, should_log=~p~n", [Permitted4, ShouldLog4]).
-    ?Test 4 result: permitted=false, should_log=false
-    ?$eprompt
-
-    # Test 5: Direct API usage - valid request
-    [invoke log "Test 5: Direct API call - valid admin request"]
-    ~Config = "<config xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-acm\">
-    ~<nacm>
-    ~<enable-nacm>true</enable-nacm>
-    ~<read-default>deny</read-default>
-    ~<write-default>deny</write-default>
-    ~<exec-default>deny</exec-default>
-    ~<groups>
-    ~<group>
-    ~<name>admin</name>
-    ~<user-name>admin</user-name>
-    ~</group>
-    ~</groups>
-    ~<rule-list>
-    ~<name>admin-rules</name>
-    ~<group>admin</group>
-    ~<rule>
-    ~<name>permit-admin-exec</name>
-    ~<access-operations>exec</access-operations>
-    ~<action>permit</action>
-    ~<rpc-name>edit-config</rpc-name>
-    ~</rule>
-    ~</rule-list>
-    ~</nacm>
-    !</config>".
-    ?$eprompt
-    !Request = "{\"user\":\"admin\",\"module_name\":null,\"rpc_name\":\"edit-config\",\"operation\":\"exec\",\"path\":null}".
-    ?$eprompt
-    !{Permitted5, ShouldLog5} = nacm_nif:validate(list_to_binary(Config), list_to_binary(Request)).
-    !io:format("Test 5 result: permitted=~p, should_log=~p~n", [Permitted5, ShouldLog5]).
-    ?Test 5 result: permitted=true, should_log=false
-    ?$eprompt
-
-    # Test 6: Direct API usage - invalid request
-    [invoke log "Test 6: Direct API call - invalid guest request"]
-    !RequestGuest = "{\"user\":\"guest\",\"module_name\":null,\"rpc_name\":\"edit-config\",\"operation\":\"exec\",\"path\":null}".
-    ?$eprompt
-    !{Permitted6, ShouldLog6} = nacm_nif:validate(list_to_binary(Config), list_to_binary(RequestGuest)).
-    !io:format("Test 6 result: permitted=~p, should_log=~p~n", [Permitted6, ShouldLog6]).
-    ?Test 6 result: permitted=false, should_log=false
-    ?$eprompt
-
-    # Test 7: Error handling - invalid XML config
-    [invoke log "Test 7: Error handling - invalid XML config"]
-    !BadConfig = "invalid xml".
-    ?$eprompt
-    !nacm_nif:validate(list_to_binary(BadConfig), list_to_binary(Request)).
-    ?false
-    ?$eprompt
-
-    # Test 8: Error handling - invalid JSON request
-    [invoke log "Test 8: Error handling - invalid JSON request"]
-    !BadRequest = "invalid json".
-    ?$eprompt
-    !nacm_nif:validate(list_to_binary(Config), list_to_binary(BadRequest)).
-    ?false
-    ?$eprompt
-
-    # Test 9: jsx encoding verification - ensure binaries work correctly
-    [invoke log "Test 9: jsx binary vs string encoding verification"]
-    !BinaryMap = #{user => <<"admin">>, rpc_name => <<"edit-config">>, operation => <<"exec">>, module_name => null, path => null}.
-    ?$eprompt
-    !JsonBinary = jsx:encode(BinaryMap).
-    ?$eprompt
-    !nacm_nif:validate(list_to_binary(Config), JsonBinary).
-    ?true
-    ?$eprompt
-
-    # Test 10: Unknown user should be denied (not in admin group)
-    [invoke log "Test 10: Unknown user 'bill' should be denied"]
-    !UnknownUserRequest = "{\"user\":\"bill\",\"module_name\":null,\"rpc_name\":\"edit-config\",\"operation\":\"exec\",\"path\":null}".
-    ?$eprompt
-    !nacm_nif:validate(list_to_binary(Config), list_to_binary(UnknownUserRequest)).
-    ?false
-    ?$eprompt
-
-    # Test 11: Different RPC operation should be denied (not in rules)
-    [invoke log "Test 11: Different RPC operation should be denied"]
-    !DifferentRpcRequest = "{\"user\":\"admin\",\"module_name\":null,\"rpc_name\":\"get-config\",\"operation\":\"exec\",\"path\":null}".
-    ?$eprompt
-    !nacm_nif:validate(list_to_binary(Config), list_to_binary(DifferentRpcRequest)).
-    ?false
-    ?$eprompt
-
-    # Test 12: Cache functionality
-    [invoke log "Test 12: Cache functionality - set config and use cached validation"]
-    !nacm_nif:set_config(list_to_binary(Config)).
-    ?$eprompt
-    !nacm_nif:validate_with_cache(list_to_binary(Request)).
-    ?true
-    ?$eprompt
-    !nacm_nif:validate_with_cache(list_to_binary(RequestGuest)).
-    ?false
-    ?$eprompt
-
-    # Test 13: Empty config leverages cache (validate/2 with empty config)
-    [invoke log "Test 13: Empty config leverages cached configuration"]
-    # First ensure we have a config cached from previous test
-    !nacm_nif:validate(list_to_binary(Config), list_to_binary(Request)).
-    ?true
-    ?$eprompt
-    # Now use empty config - should use cached config
-    !nacm_nif:validate(<<>>, list_to_binary(Request)).
-    ?true
-    ?$eprompt
-    # Test with guest user using empty config (should be denied by cached rules)
-    !nacm_nif:validate(<<>>, list_to_binary(RequestGuest)).
-    ?false
-    ?$eprompt
-    # Test that cache persists for subsequent empty config calls
-    !nacm_nif:validate(<<>>, list_to_binary(Request)).
-    ?true
-    ?$eprompt
-
-    # Test 14: Cache update when rules change
-    [invoke log "Test 14: Cache update when NACM rules change"]
-    # Create a different config that denies admin operations
-    ~NewConfig = "<config xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-acm\">
-    ~<nacm>
-    ~<enable-nacm>true</enable-nacm>
-    ~<read-default>deny</read-default>
-    ~<write-default>deny</write-default>
-    ~<exec-default>deny</exec-default>
-    ~<groups>
-    ~<group>
-    ~<name>admin</name>
-    ~<user-name>admin</user-name>
-    ~</group>
-    ~</groups>
-    ~<rule-list>
-    ~<name>admin-deny-rules</name>
-    ~<group>admin</group>
-    ~<rule>
-    ~<name>deny-admin-exec</name>
-    ~<access-operations>exec</access-operations>
-    ~<action>deny</action>
-    ~<rpc-name>edit-config</rpc-name>
-    ~</rule>
-    ~</rule-list>
-    ~</nacm>
-    !</config>".
-    ?$eprompt
-    # Update cache with new restrictive config
-    !nacm_nif:validate(list_to_binary(NewConfig), list_to_binary(Request)).
-    ?false
-    ?$eprompt
-    # Verify cache was updated by using empty config (should use new rules)
-    !nacm_nif:validate(<<>>, list_to_binary(Request)).
-    ?false
-    ?$eprompt
-    # Verify with validate_with_cache as well
-    !nacm_nif:validate_with_cache(list_to_binary(Request)).
-    ?false
-    ?$eprompt
-
-    [invoke log "All NACM NIF tests completed successfully!"]
-
-    # === TAIL-F ACM EXTENSION TESTS ===
-    [invoke log "Starting Tail-f ACM extension tests"]
 
     # Test 15: Command rule validation - CLI context
     [invoke log "Test 15: CLI command access control"]
@@ -208,6 +19,11 @@
     ~<cmd-read-default xmlns=\"http://tail-f.com/yang/acm\">deny</cmd-read-default>
     ~<cmd-exec-default xmlns=\"http://tail-f.com/yang/acm\">deny</cmd-exec-default>
     ~<groups>
+    ~<group>
+    ~<name>administrators</name>
+    ~<user-name>admin</user-name>
+    ~<gid xmlns=\"http://tail-f.com/yang/acm\">999</gid>
+    ~</group>
     ~<group>
     ~<name>operators</name>
     ~<user-name>oper</user-name>
@@ -231,6 +47,18 @@
     ~<access-operations>exec</access-operations>
     ~<action>deny</action>
     ~</cmdrule>
+    ~</rule-list>
+    ~<rule-list>
+    ~  <name>admin-commands</name>
+    ~  <group>administrators</group>
+    ~  <cmdrule xmlns=\"http://tail-f.com/yang/acm\">
+    ~    <name>allow-reboot</name>
+    ~    <context>*</context>
+    ~    <command>reboot</command>
+    ~    <access-operations>exec</access-operations>
+    ~    <action>permit</action>
+    ~    <log-if-permit/>
+    ~  </cmdrule>
     ~</rule-list>
     ~</nacm>
     !</config>".
@@ -256,16 +84,27 @@
     # Test reboot from WebUI context - should also be denied
     !RebootWebUIRequest = "{\"user\":\"oper\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"exec\",\"path\":null,\"context\":\"webui\",\"command\":\"reboot\"}".
     ?$eprompt
-    !nacm_nif:validate(list_to_binary(TailfConfig), list_to_binary(RebootWebUIRequest)).
-    ?false
+    !{PermittedWebUIReboot, ShouldLogWebUIReboot} = nacm_nif:validate(list_to_binary(TailfConfig), list_to_binary(RebootWebUIRequest)).
+    !io:format("WebUI reboot result: permitted=~p, should_log=~p~n", [PermittedWebUIReboot, ShouldLogWebUIReboot]).
+    ?WebUI reboot result: permitted=false, should_log=false
+    ?$eprompt
+
+    # admin user can reboot from any context
+    [invoke log "Test 16.2: Allow reboot command for admin from any context"]
+    !RebootRequest2 = "{\"user\":\"admin\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"exec\",\"path\":null,\"context\":\"cli\",\"command\":\"reboot\"}".
+    ?$eprompt
+    !{PermittedReboot2, ShouldLogReboot2} = nacm_nif:validate(list_to_binary(TailfConfig), list_to_binary(RebootRequest2)).
+    !io:format("Test 16.2 reboot result: permitted=~p, should_log=~p~n", [PermittedReboot2, ShouldLogReboot2]).
+    ?Test 16.2 reboot result: permitted=true, should_log=true
     ?$eprompt
 
     # Test 17: Command rule validation - unknown command uses defaults
     [invoke log "Test 17: Unknown command should use cmd-exec-default (deny)"]
     !UnknownCmdRequest = "{\"user\":\"oper\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"exec\",\"path\":null,\"context\":\"cli\",\"command\":\"unknown-command\"}".
     ?$eprompt
-    !nacm_nif:validate(list_to_binary(TailfConfig), list_to_binary(UnknownCmdRequest)).
-    ?false
+    !{PermittedUnknown, ShouldLogUnknown} = nacm_nif:validate(list_to_binary(TailfConfig), list_to_binary(UnknownCmdRequest)).
+    !io:format("Test 17 unknown command result: permitted=~p, should_log=~p~n", [PermittedUnknown, ShouldLogUnknown]).
+    ?Test 17 unknown command result: permitted=false, should_log=false
     ?$eprompt
 
     # Test 18: Context-specific rules
@@ -273,8 +112,9 @@
     # Same user, same command, but different context should be denied (rule specifies CLI only)
     !WebUIShowRequest = "{\"user\":\"oper\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"read\",\"path\":null,\"context\":\"webui\",\"command\":\"show status\"}".
     ?$eprompt
-    !nacm_nif:validate(list_to_binary(TailfConfig), list_to_binary(WebUIShowRequest)).
-    ?false
+    !{PermittedWebUIShow, ShouldLogWebUIShow} = nacm_nif:validate(list_to_binary(TailfConfig), list_to_binary(WebUIShowRequest)).
+    !io:format("Test 18 WebUI show result: permitted=~p, should_log=~p~n", [PermittedWebUIShow, ShouldLogWebUIShow]).
+    ?Test 18 WebUI show result: permitted=false, should_log=false
     ?$eprompt
 
     # Test 19: Wildcard command matching
@@ -311,22 +151,25 @@
     # Test show interfaces (should match "show *")
     !ShowInterfacesRequest = "{\"user\":\"user1\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"read\",\"path\":null,\"context\":\"cli\",\"command\":\"show interfaces\"}".
     ?$eprompt
-    !nacm_nif:validate(list_to_binary(WildcardConfig), list_to_binary(ShowInterfacesRequest)).
-    ?true
+    !{PermittedInterfaces, ShouldLogInterfaces} = nacm_nif:validate(list_to_binary(WildcardConfig), list_to_binary(ShowInterfacesRequest)).
+    !io:format("Show interfaces result: permitted=~p, should_log=~p~n", [PermittedInterfaces, ShouldLogInterfaces]).
+    ?Show interfaces result: permitted=true, should_log=false
     ?$eprompt
 
     # Test show system status (should match "show *")
     !ShowSystemRequest = "{\"user\":\"user1\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"read\",\"path\":null,\"context\":\"cli\",\"command\":\"show system status\"}".
     ?$eprompt
-    !nacm_nif:validate(list_to_binary(WildcardConfig), list_to_binary(ShowSystemRequest)).
-    ?true
+    !{PermittedSystem, ShouldLogSystem} = nacm_nif:validate(list_to_binary(WildcardConfig), list_to_binary(ShowSystemRequest)).
+    !io:format("Show system result: permitted=~p, should_log=~p~n", [PermittedSystem, ShouldLogSystem]).
+    ?Show system result: permitted=true, should_log=false
     ?$eprompt
 
     # Test configure command (should not match "show *")
     !ConfigureRequest = "{\"user\":\"user1\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"exec\",\"path\":null,\"context\":\"cli\",\"command\":\"configure terminal\"}".
     ?$eprompt
-    !nacm_nif:validate(list_to_binary(WildcardConfig), list_to_binary(ConfigureRequest)).
-    ?false
+    !{PermittedConfigure, ShouldLogConfigure} = nacm_nif:validate(list_to_binary(WildcardConfig), list_to_binary(ConfigureRequest)).
+    !io:format("Configure terminal result: permitted=~p, should_log=~p~n", [PermittedConfigure, ShouldLogConfigure]).
+    ?Configure terminal result: permitted=false, should_log=false
     ?$eprompt
 
     # Test 20: Logging functionality with log-if-permit and log-if-deny
@@ -346,7 +189,6 @@
     ~    <user-name>alice</user-name>
     ~  </group>
     ~</groups>
-    ~<groups>
     ~<rule-list>
     ~  <name>logging-test</name>
     ~  <group>admin</group>
@@ -360,9 +202,9 @@
     ~  <cmdrule xmlns=\"http://tail-f.com/yang/acm\">
     ~    <name>cli-help</name>
     ~    <context>cli</context>
-    ~    <command>help</command>
-    ~    <action>permit</action>
-    ~    <log-if-permit xmlns=\"http://tail-f.com/yang/acm\"/>
+    ~    <command>help</command>
+    ~    <action>permit</action>
+    ~    <log-if-permit/>
     ~  </cmdrule>
     ~  <cmdrule xmlns=\"http://tail-f.com/yang/acm\">
     ~    <name>deny-with-log</name>
@@ -380,15 +222,17 @@
     # Test permit with no logging
     !PermitLogRequest = "{\"user\":\"alice\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"read\",\"path\":null,\"context\":\"cli\",\"command\":\"show version\"}".
     ?$eprompt
-    !nacm_nif:validate(list_to_binary(LoggingConfig), list_to_binary(PermitLogRequest)).
-    ?{true,false}
+    !{PermittedShowVersion, ShouldLogShowVersion} = nacm_nif:validate(list_to_binary(LoggingConfig), list_to_binary(PermitLogRequest)).
+    !io:format("Test 20 show version result: permitted=~p, should_log=~p~n", [PermittedShowVersion, ShouldLogShowVersion]).
+    ?Test 20 show version result: permitted=true, should_log=false
     ?$eprompt
 
     # Test permit with logging
     !HelpRequest = "{\"user\":\"alice\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"read\",\"path\":null,\"context\":\"cli\",\"command\":\"help\"}".
     ?$eprompt
-    !nacm_nif:validate(list_to_binary(LoggingConfig), list_to_binary(HelpRequest)).
-    ?{true,true}
+    !{PermittedHelp, ShouldLogHelp} = nacm_nif:validate(list_to_binary(LoggingConfig), list_to_binary(HelpRequest)).
+    !io:format("Help command result: permitted=~p, should_log=~p~n", [PermittedHelp, ShouldLogHelp]).
+    ?Help command result: permitted=true, should_log=true
     ?$eprompt
 
     # Test deny with logging

@@ -18,5 +18,13 @@ nif: nacm-validator
 clean:
 	cd $(NACM_NIF_DIR) && rebar3 clean
 
-test:
-	(cd nacm_nif/test; ../_build/default/lib/lux/bin/lux run.lux)
+.PHONY: test
+test: test_nacm test_tailf_acm
+
+.PHONY: test_nacm
+test_nacm:
+	(cd nacm_nif/test; ../_build/default/lib/lux/bin/lux nacm.lux)
+
+.PHONY: test_tailf_acm
+test_tailf_acm:
+	(cd nacm_nif/test; ../_build/default/lib/lux/bin/lux tailf-acm.lux)
