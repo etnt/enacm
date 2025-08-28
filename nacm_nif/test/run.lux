@@ -339,48 +339,60 @@
     ~<exec-default>deny</exec-default>
     ~<cmd-read-default xmlns=\"http://tail-f.com/yang/acm\">deny</cmd-read-default>
     ~<cmd-exec-default xmlns=\"http://tail-f.com/yang/acm\">deny</cmd-exec-default>
-    ~<log-if-default-permit xmlns=\"http://tail-f.com/yang/acm\"/>
     ~<log-if-default-deny xmlns=\"http://tail-f.com/yang/acm\"/>
     ~<groups>
-    ~<group>
-    ~<name>log-test-users</name>
-    ~<user-name>loguser</user-name>
-    ~</group>
+    ~  <group>
+    ~    <name>admin</name>
+    ~    <user-name>alice</user-name>
+    ~  </group>
     ~</groups>
+    ~<groups>
     ~<rule-list>
-    ~<name>logging-test</name>
-    ~<group>log-test-users</group>
-    ~<cmdrule xmlns=\"http://tail-f.com/yang/acm\">
-    ~<name>permit-with-log</name>
-    ~<context>cli</context>
-    ~<command>show version</command>
-    ~<access-operations>read</access-operations>
-    ~<action>permit</action>
-    ~<log-if-permit/>
-    ~</cmdrule>
-    ~<cmdrule xmlns=\"http://tail-f.com/yang/acm\">
-    ~<name>deny-with-log</name>
-    ~<context>cli</context>
-    ~<command>delete config</command>
-    ~<access-operations>exec</access-operations>
-    ~<action>deny</action>
-    ~<log-if-deny/>
-    ~</cmdrule>
+    ~  <name>logging-test</name>
+    ~  <group>admin</group>
+    ~  <cmdrule xmlns=\"http://tail-f.com/yang/acm\">
+    ~    <name>permit-with-log</name>
+    ~    <context>cli</context>
+    ~    <command>show version</command>
+    ~    <access-operations>read</access-operations>
+    ~    <action>permit</action>
+    ~  </cmdrule>
+    ~  <cmdrule xmlns=\"http://tail-f.com/yang/acm\">
+    ~    <name>cli-help</name>
+    ~    <context>cli</context>
+    ~    <command>help</command>
+    ~    <action>permit</action>
+    ~    <log-if-permit xmlns=\"http://tail-f.com/yang/acm\"/>
+    ~  </cmdrule>
+    ~  <cmdrule xmlns=\"http://tail-f.com/yang/acm\">
+    ~    <name>deny-with-log</name>
+    ~    <context>cli</context>
+    ~    <command>delete config</command>
+    ~    <access-operations>exec</access-operations>
+    ~    <action>deny</action>
+    ~    <log-if-deny/>
+    ~  </cmdrule>
     ~</rule-list>
     ~</nacm>
     !</config>".
     ?$eprompt
 
-    # Test permit with logging
-    !PermitLogRequest = "{\"user\":\"loguser\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"read\",\"path\":null,\"context\":\"cli\",\"command\":\"show version\"}".
+    # Test permit with no logging
+    !PermitLogRequest = "{\"user\":\"alice\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"read\",\"path\":null,\"context\":\"cli\",\"command\":\"show version\"}".
     ?$eprompt
-    !{PermittedLog, ShouldLogPermit} = nacm_nif:validate(list_to_binary(LoggingConfig), list_to_binary(PermitLogRequest)).
-    !io:format("Permit with log: permitted=~p, should_log=~p~n", [PermittedLog, ShouldLogPermit]).
-    ?Permit with log: permitted=true, should_log=true
+    !nacm_nif:validate(list_to_binary(LoggingConfig), list_to_binary(PermitLogRequest)).
+    ?{true,false}
+    ?$eprompt
+
+    # Test permit with logging
+    !HelpRequest = "{\"user\":\"alice\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"read\",\"path\":null,\"context\":\"cli\",\"command\":\"help\"}".
+    ?$eprompt
+    !nacm_nif:validate(list_to_binary(LoggingConfig), list_to_binary(HelpRequest)).
+    ?{true,true}
     ?$eprompt
 
     # Test deny with logging
-    !DenyLogRequest = "{\"user\":\"loguser\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"exec\",\"path\":null,\"context\":\"cli\",\"command\":\"delete config\"}".
+    !DenyLogRequest = "{\"user\":\"alice\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"exec\",\"path\":null,\"context\":\"cli\",\"command\":\"delete config\"}".
     ?$eprompt
     !{PermittedDeny, ShouldLogDeny} = nacm_nif:validate(list_to_binary(LoggingConfig), list_to_binary(DenyLogRequest)).
     !io:format("Deny with log: permitted=~p, should_log=~p~n", [PermittedDeny, ShouldLogDeny]).
@@ -388,7 +400,7 @@
     ?$eprompt
 
     # Test default policy with logging (unknown command should use defaults)
-    !DefaultLogRequest = "{\"user\":\"loguser\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"exec\",\"path\":null,\"context\":\"cli\",\"command\":\"unknown command\"}".
+    !DefaultLogRequest = "{\"user\":\"alice\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"exec\",\"path\":null,\"context\":\"cli\",\"command\":\"unknown command\"}".
     ?$eprompt
     !{PermittedDefault, ShouldLogDefault} = nacm_nif:validate(list_to_binary(LoggingConfig), list_to_binary(DefaultLogRequest)).
     !io:format("Default with log: permitted=~p, should_log=~p~n", [PermittedDefault, ShouldLogDefault]).
