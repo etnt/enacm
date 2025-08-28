@@ -8,9 +8,30 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CARGO_DIR="$SCRIPT_DIR/native/nacm_nif"
 PRIV_DIR="$SCRIPT_DIR/priv"
 
-# Detect architecture and OS
+# Detect architecture and OS with better Apple Silicon detection
 ARCH=$(uname -m)
 OS=$(uname -s)
+
+# Check for BUILD_ARCH environment variable override first
+if [ -n "${BUILD_ARCH}" ]; then
+    echo "BUILD_ARCH=${BUILD_ARCH} override detected, using ${BUILD_ARCH}"
+    ARCH="${BUILD_ARCH}"
+elif [ "$OS" = "Darwin" ]; then
+    # On macOS, try to detect actual hardware architecture vs emulated
+    if [ "$ARCH" = "x86_64" ] && [ -x /usr/sbin/sysctl ]; then
+        # Check if hardware is actually Apple Silicon
+        HW_MACHINE=$(sysctl -n hw.machine 2>/dev/null || echo "")
+        if [ "$HW_MACHINE" = "arm64" ]; then
+            echo "Warning: Running under Rosetta emulation (reporting x86_64 but hardware is arm64)"
+            echo "Consider using: arch -arm64 make example_permit"
+            echo "Or set BUILD_ARCH=arm64 to force native Apple Silicon build"
+            if [ "${BUILD_ARCH}" = "arm64" ]; then
+                echo "BUILD_ARCH=arm64 detected, forcing arm64 build"
+                ARCH="arm64"
+            fi
+        fi
+    fi
+fi
 
 echo "Detected: $OS $ARCH"
 

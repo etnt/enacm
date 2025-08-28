@@ -311,6 +311,149 @@ CmdRequest = jsx:encode(#{
 {Permitted, ShouldLog} = nacm_nif:validate(TailfConfigXml, CmdRequest).
 ```
 
+## Running Examples
+
+The project includes comprehensive examples with built-in assertions that demonstrate all library capabilities. Examples work automatically in any terminal environment (VS Code, external terminals, Rosetta emulation) thanks to automatic architecture detection.
+
+### Quick Example Commands
+
+```bash
+# Run all examples with validation and summary (works anywhere!)
+make examples
+
+# Run specific examples (auto-detects architecture)
+make example_permit      # Basic permit scenario
+make example_deny        # Basic deny scenario  
+make example_cache       # Caching functionality
+make example_performance # Performance comparison (30x+ speedup)
+
+# Show all available example targets
+make help
+```
+
+### Individual Example Details
+
+#### 1. Basic Permit/Deny Examples
+
+```bash
+# Test admin user (should be permitted)
+make example_permit
+# Output: ✓ permit_example PASSED: {true,false}
+
+# Test guest user (should be denied) 
+make example_deny
+# Output: ✓ deny_example PASSED: {false,false}
+```
+
+These examples demonstrate basic NACM functionality with both jsx-encoded and manually-encoded JSON requests.
+
+#### 2. Caching Examples
+
+```bash
+# Demonstrate configuration caching for multiple validations
+make example_cache
+```
+
+This example shows:
+- Setting configuration in cache with `set_config/1`
+- Multiple fast validations with `validate_with_cache/1`
+- Testing different users (admin, guest, unknown) with cached config
+- All results validated with proper assertions
+
+#### 3. Performance Comparison
+
+```bash
+# Compare cached vs non-cached validation performance
+make example_performance
+```
+
+Typical output:
+```
+Performance comparison (1000 iterations):
+  Non-cached: 45623 microseconds
+  Cached:     1508 microseconds  
+  Speedup:    30.25x faster
+✓ performance_comparison PASSED: cached is 30.25x faster
+```
+
+### Running Examples from Erlang Shell
+
+You can also run examples directly from an Erlang shell:
+
+```bash
+cd nacm_nif
+erl -pa _build/default/lib/*/ebin
+```
+
+```erlang
+% Run individual examples
+1> nacm_nif_example:permit_example().
+Running permit_example...
+✓ permit_example PASSED: {true,false}
+{true,false}
+
+2> nacm_nif_example:cache_example().
+Running cache_example...
+Setting config in cache...
+Cache validation results:
+  Admin: {true,false}
+  Guest: {false,false}
+  Bill:  {false,false}
+✓ cache_example admin PASSED: {true,false}
+✓ cache_example guest PASSED: {false,false}
+✓ cache_example bill PASSED: {false,false}
+{{true,false},{false,false},{false,false}}
+
+% Run all examples with comprehensive validation
+3> nacm_nif_example:run_all_examples().
+=== Running All NACM NIF Examples ===
+
+--- Running permit_example ---
+Running permit_example...
+✓ permit_example PASSED: {true,false}
+✓ permit_example completed successfully
+
+--- Running deny_example ---
+Running deny_example...
+✓ deny_example PASSED: {false,false}
+✓ deny_example completed successfully
+
+[... continues for all 6 examples ...]
+
+=== Example Summary ===
+Total examples: 6
+Passed: 6
+Failed: 0
+🎉 All examples passed!
+ok
+```
+
+### Example Functionality Covered
+
+The examples demonstrate:
+
+1. **permit_example/deny_example**: Basic NACM validation with jsx encoding
+2. **permit_example_manual/deny_example_manual**: Same validation with manual JSON encoding (no jsx dependency)
+3. **cache_example**: Configuration caching for multiple fast validations
+4. **performance_comparison**: Quantified performance benefits of caching (typically 30x+ speedup)
+
+### Example Assertions
+
+All examples include comprehensive assertions that:
+- Validate expected return values `{Permitted, ShouldLog}`
+- Provide clear pass/fail messages with ✓ and ✗ indicators
+- Throw descriptive errors on assertion failures
+- Include performance validation (cache must be faster)
+- Test consistency between cached and non-cached results
+
+### Example Integration Benefits
+
+- **Automated validation**: Examples self-test to catch regressions
+- **Documentation by example**: Working code demonstrates real usage
+- **Performance benchmarking**: Built-in performance measurement and validation
+- **Easy development workflow**: Single command runs comprehensive validation
+- **CI/CD ready**: Examples can be run in automated pipelines
+
 ## Testing
 
 The project includes a comprehensive Lux test suite that validates all functionality:
@@ -525,6 +668,41 @@ If you see an error like "incompatible architecture (have 'x86_64', need 'arm64'
 cd nacm_nif
 rm -rf priv/nacm_nif.so native/nacm_nif/target
 rebar3 compile
+```
+
+### Troubleshooting
+
+**Architecture Mismatch Error:**
+If you see an error like "incompatible architecture (have 'x86_64', need 'arm64')", clean and rebuild:
+
+```bash
+cd nacm_nif
+rm -rf priv/nacm_nif.so native/nacm_nif/target
+rebar3 compile
+```
+
+**Mixed Architecture Environments (Rosetta/Apple Silicon):**
+The Makefile now automatically detects and handles Rosetta emulation! 🎯
+
+```bash
+# These work in most terminals:
+make examples                # Auto-detects correct architecture
+make example_permit         # Works in VS Code and most external terminals
+
+# If you get architecture mismatch in external terminals:
+FORCE_NATIVE=1 make examples        # Force Apple Silicon native (simplest!)
+BUILD_ARCH=arm64 make example_permit # Manual architecture override
+```
+
+When Rosetta emulation is detected, you'll see:
+```
+🔄 Auto-detected: Rosetta emulation on Apple Silicon, using native arm64
+```
+
+Debug architecture detection:
+```bash
+make arch-info                           # Show detection details
+FORCE_NATIVE=1 make arch-info            # Show with forced native mode
 ```
 
 ### Rebuilding
