@@ -1,14 +1,16 @@
 # ENACM - Erlang NACM NIF Library
 
-An Erlang Native Implemented Function (NIF) library for validating requests according to NACM (Network Access Control Model) rules as defined in RFC 8341.
+An Erlang Native Implemented Function (NIF) library for validating requests according to NACM (Network Access Control Model) rules as defined in RFC 8341, with support for Tail-f ACM extensions.
 
-This project integrates the [nacm-rust-prototype](https://github.com/etnt/nacm-rust-prototype) Rust library into Erlang via a NIF, providing high-performance NACM validation for Erlang applications.
+This project integrates the [nacm-validator](https://github.com/etnt/nacm-validator) Rust library (tailf-acm branch) into Erlang via a NIF, providing high-performance NACM validation with enhanced logging and command access control for Erlang applications.
 
 ## Features
 
 - **NACM Validation**: Full RFC 8341 compliance for access control validation
-- **XML Configuration**: Parse real-world NACM XML configurations
-- **JSON Requests**: Accept access requests in JSON format
+- **Tail-f ACM Extensions**: Command rules, context-aware access control, and enhanced logging
+- **XML Configuration**: Parse real-world NACM XML configurations with Tail-f extensions
+- **JSON Requests**: Accept access requests with context and command fields
+- **Enhanced Return Values**: Returns both access decision and logging recommendation
 - **High Performance**: Native Rust implementation via NIF
 - **Configuration Caching**: 30x+ performance improvement for repeated validations
 - **Thread-Safe**: Concurrent validation with cached configurations
@@ -37,15 +39,15 @@ The build system automatically detects your architecture and compiles the approp
 make
 
 # Or step by step:
-make nacm-rust-prototype  # Clone the Rust NACM library
+make nacm-validator  # Clone the Rust NACM library (tailf-acm branch)
 make nif                  # Build the NIF library (auto-detects architecture)
 ```
 
 ### Manual Build
 
 ```bash
-# 1. Clone the NACM Rust library dependency
-git clone https://github.com/etnt/nacm-rust-prototype.git
+# 1. Clone the NACM Rust library dependency (tailf-acm branch)
+git clone -b tailf-acm https://github.com/etnt/nacm-validator.git
 
 # 2. Build the NIF (auto-detects architecture)
 cd nacm_nif
@@ -64,20 +66,28 @@ rebar3 compile
 cd nacm_nif
 erl -pa _build/default/lib/*/ebin
 
-% In Erlang shell:
+% In Erlang shell - Note: All functions now return {boolean(), boolean()} tuples
 1> nacm_nif_example:permit_example().
-true
+{true, false}    % {permitted, should_log}
 
 2> nacm_nif_example:deny_example().
-false
+{false, false}   % {permitted, should_log}
 
 % Or use manual JSON examples (no jsx dependency):
 3> nacm_nif_example:permit_example_manual().
-true
+{true, false}
 
 4> nacm_nif_example:deny_example_manual().
-false
+{false, false}
 ```
+
+### Enhanced Return Values
+
+All validation functions now return a tuple `{Permitted, ShouldLog}`:
+- **Permitted**: `true` if access is granted, `false` if denied
+- **ShouldLog**: `true` if this access decision should be logged, `false` otherwise
+
+The logging flag is controlled by NACM rules with logging directives like `<log-if-permit/>`, `<log-if-deny/>`, and default logging settings.
 
 ### Direct API Usage
 
@@ -119,8 +129,59 @@ RequestJson = jsx:encode(#{
 }),
 
 % Validate the request
-Result = nacm_nif:validate(ConfigXml, RequestJson).
-% Result will be 'true' (permit) or 'false' (deny)
+{Permitted, ShouldLog} = nacm_nif:validate(ConfigXml, RequestJson).
+% Result will be {true, false} (permit, no logging) or {false, false} (deny, no logging)
+```
+
+### Tail-f ACM Extensions
+
+The library supports Tail-f ACM extensions for enhanced command-based access control:
+
+```erlang
+% Configuration with command rules and logging
+TailfConfigXml = "<?xml version=\"1.0\"?>
+<config xmlns=\"http://tail-f.com/ns/config/1.0\">
+  <nacm xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-acm\">
+    <enable-nacm>true</enable-nacm>
+    <cmd-read-default xmlns=\"http://tail-f.com/yang/acm\">deny</cmd-read-default>
+    <cmd-exec-default xmlns=\"http://tail-f.com/yang/acm\">deny</cmd-exec-default>
+    <log-if-default-permit xmlns=\"http://tail-f.com/yang/acm\"/>
+    <groups>
+      <group>
+        <name>operators</name>
+        <user-name>oper</user-name>
+        <gid xmlns=\"http://tail-f.com/yang/acm\">1000</gid>
+      </group>
+    </groups>
+    <rule-list>
+      <name>cli-commands</name>
+      <group>operators</group>
+      <cmdrule xmlns=\"http://tail-f.com/yang/acm\">
+        <name>show-commands</name>
+        <context>cli</context>
+        <command>show *</command>
+        <access-operations>read</access-operations>
+        <action>permit</action>
+        <log-if-permit/>
+      </cmdrule>
+    </rule-list>
+  </nacm>
+</config>",
+
+% Create command request with context
+CmdRequestJson = jsx:encode(#{
+    user => "oper",
+    module_name => null,
+    rpc_name => null,
+    operation => "read",
+    path => null,
+    context => "cli",          % Context field for command rules
+    command => "show interfaces" % Command field for matching
+}),
+
+% Validate command request
+{Permitted, ShouldLog} = nacm_nif:validate(TailfConfigXml, CmdRequestJson).
+% Result: {true, true} - permitted with logging enabled
 ```
 
 ### Cached Validation (High Performance)
@@ -133,19 +194,19 @@ ConfigXml = "<?xml version=\"1.0\"?>...",  % Your NACM config
 nacm_nif:set_config(list_to_binary(ConfigXml)),
 
 % All subsequent validations use cached config (30x+ faster)
-Result1 = nacm_nif:validate_with_cache(Request1Json),
-Result2 = nacm_nif:validate_with_cache(Request2Json),
-Result3 = nacm_nif:validate_with_cache(Request3Json).
+{Result1, Log1} = nacm_nif:validate_with_cache(Request1Json),
+{Result2, Log2} = nacm_nif:validate_with_cache(Request2Json),
+{Result3, Log3} = nacm_nif:validate_with_cache(Request3Json).
 
 % Method 2: Use empty config to leverage cache
-nacm_nif:validate(ConfigXml, Request1),     % Parses and caches config
-Result2 = nacm_nif:validate(<<>>, Request2), % Uses cached config
-Result3 = nacm_nif:validate(<<>>, Request3). % Uses cached config
+{Permitted1, ShouldLog1} = nacm_nif:validate(ConfigXml, Request1),     % Parses and caches config
+{Permitted2, ShouldLog2} = nacm_nif:validate(<<>>, Request2), % Uses cached config
+{Permitted3, ShouldLog3} = nacm_nif:validate(<<>>, Request3). % Uses cached config
 
 % Method 3: Update cache when rules change
 NewConfigXml = "...",  % Updated NACM rules
-nacm_nif:validate(NewConfigXml, Request),   % Updates cache with new config
-nacm_nif:validate_with_cache(NextRequest).  % Uses new cached config
+{Permitted, ShouldLog} = nacm_nif:validate(NewConfigXml, Request),   % Updates cache with new config
+{NextPermitted, NextLog} = nacm_nif:validate_with_cache(NextRequest).  % Uses new cached config
 ```
 
 **Performance Benefits:**
@@ -163,6 +224,8 @@ nacm_nif:validate_with_cache(NextRequest).  % Uses new cached config
 
 Access requests should be JSON objects with the following fields:
 
+### Standard NACM Fields
+
 ```json
 {
   "user": "username",
@@ -173,12 +236,32 @@ Access requests should be JSON objects with the following fields:
 }
 ```
 
-**Fields:**
+### Tail-f ACM Extension Fields
+
+For command-based access control, additional fields are supported:
+
+```json
+{
+  "user": "username",
+  "module_name": null,
+  "rpc_name": null,
+  "operation": "read|exec",
+  "path": null,
+  "context": "cli|webui|api",
+  "command": "show interfaces"
+}
+```
+
+**Standard Fields:**
 - `user` (required): String - Username making the request
 - `module_name` (optional): String or null - YANG module name
 - `rpc_name` (optional): String or null - RPC operation name
 - `operation` (required): String - One of: "read", "create", "update", "delete", "exec"
 - `path` (optional): String or null - XPath to the resource
+
+**Tail-f ACM Fields:**
+- `context` (optional): String - Access context (cli, webui, api, etc.) for command rules
+- `command` (optional): String - Command string for command rule matching
 
 ## Examples
 
@@ -187,19 +270,21 @@ The project includes several examples:
 ### 1. Permit Example
 ```erlang
 nacm_nif_example:permit_example().
+% Returns: {true, false} - permitted, no logging
 ```
 Tests an admin user performing an allowed exec operation.
 
 ### 2. Deny Example  
 ```erlang
 nacm_nif_example:deny_example().
+% Returns: {false, false} - denied, no logging
 ```
 Tests a guest user performing a denied exec operation.
 
 ### 3. Custom Validation
 ```erlang
 % Create your own config and request
-nacm_nif:validate(YourConfigXml, YourRequestJson).
+{Permitted, ShouldLog} = nacm_nif:validate(YourConfigXml, YourRequestJson).
 ```
 
 ### 4. Cache Example
@@ -214,6 +299,18 @@ nacm_nif_example:performance_comparison().
 ```
 Shows performance difference between cached and non-cached validation (typically 30x+ speedup).
 
+### 6. Tail-f ACM Command Examples
+```erlang
+% CLI command validation with context
+CmdRequest = jsx:encode(#{
+    user => "oper",
+    context => "cli",
+    command => "show version",
+    operation => "read"
+}),
+{Permitted, ShouldLog} = nacm_nif:validate(TailfConfigXml, CmdRequest).
+```
+
 ## Testing
 
 The project includes a comprehensive Lux test suite that validates all functionality:
@@ -225,7 +322,7 @@ The project includes a comprehensive Lux test suite that validates all functiona
 make test
 ```
 
-The test suite includes 14 comprehensive tests covering:
+The test suite includes 20 comprehensive tests covering:
 
 - **Basic functionality**: permit/deny examples with jsx and manual JSON encoding
 - **Direct API calls**: Testing `nacm_nif:validate/2` directly
@@ -233,6 +330,8 @@ The test suite includes 14 comprehensive tests covering:
 - **Edge cases**: Unknown users, different RPC operations
 - **jsx encoding verification**: Binary vs string encoding correctness
 - **Caching functionality**: Config caching and cache-based validation
+- **Tail-f ACM extensions**: Command rules, context validation, wildcard matching
+- **Logging functionality**: Rules with `log-if-permit` and `log-if-deny` directives
 
 ### Test Details
 
@@ -245,6 +344,12 @@ The test suite includes 14 comprehensive tests covering:
 7. **Test 12**: Cache functionality (set config and cached validation)
 8. **Test 13**: Empty config leveraging cached configuration
 9. **Test 14**: Cache update when NACM rules change
+10. **Test 15**: CLI command access control with context
+11. **Test 16**: Command rule denial across contexts
+12. **Test 17**: Unknown command using defaults
+13. **Test 18**: Context-specific rule validation
+14. **Test 19**: Wildcard command pattern matching
+15. **Test 20**: Logging functionality with permit/deny logging flags
 
 All tests run automatically and provide detailed progress output. Test logs are stored in `nacm_nif/test/lux_logs/` with HTML reports for detailed analysis.
 
@@ -258,7 +363,7 @@ The Lux test framework is automatically installed as a dependency via rebar3. No
 enacm/
 ├── Makefile                    # Top-level build automation
 ├── README.md                   # This file
-├── nacm-rust-prototype/        # Rust NACM library (cloned)
+├── nacm-validator/             # Rust NACM library (cloned)
 └── nacm_nif/                   # Erlang NIF application
     ├── src/
     │   ├── nacm_nif.erl        # Main NIF module
@@ -281,37 +386,39 @@ enacm/
 ### nacm_nif:validate/2
 
 ```erlang
-validate(ConfigXml, RequestJson) -> boolean().
+validate(ConfigXml, RequestJson) -> {boolean(), boolean()}.
 ```
 
 Validates an access request against NACM rules.
 
 **Parameters:**
-- `ConfigXml` (string): NACM configuration as XML string. If empty, uses cached config.
-- `RequestJson` (string): Access request as JSON string
+- `ConfigXml` (binary): NACM configuration as XML binary. If empty, uses cached config.
+- `RequestJson` (binary): Access request as JSON binary
 
 **Returns:**
-- `true` if access is permitted
-- `false` if access is denied
+- `{Permitted, ShouldLog}` tuple where:
+  - `Permitted`: `true` if access is permitted, `false` if denied
+  - `ShouldLog`: `true` if this decision should be logged, `false` otherwise
 
 **Caching Behavior:**
 - Non-empty `ConfigXml`: Parses config and updates cache
-- Empty `ConfigXml`: Uses cached config (returns `false` if no cache available)
+- Empty `ConfigXml`: Uses cached config (returns `{false, false}` if no cache available)
 
 ### nacm_nif:validate_with_cache/1
 
 ```erlang
-validate_with_cache(RequestJson) -> boolean().
+validate_with_cache(RequestJson) -> {boolean(), boolean()}.
 ```
 
 Validates an access request using cached NACM configuration.
 
 **Parameters:**
-- `RequestJson` (string): Access request as JSON string
+- `RequestJson` (binary): Access request as JSON binary
 
 **Returns:**
-- `true` if access is permitted  
-- `false` if access is denied or no config cached
+- `{Permitted, ShouldLog}` tuple where:
+  - `Permitted`: `true` if access is permitted, `false` if denied  
+  - `ShouldLog`: `true` if this decision should be logged, `false` otherwise
 
 **Note:** Requires config to be pre-loaded with `set_config/1` or previous `validate/2` call.
 
@@ -324,12 +431,67 @@ set_config(ConfigXml) -> ok.
 Pre-loads NACM configuration into cache for subsequent validations.
 
 **Parameters:**
-- `ConfigXml` (string): NACM configuration as XML string
+- `ConfigXml` (binary): NACM configuration as XML binary
 
 **Returns:**
 - `ok`
 
 **Use Case:** Call once during application startup, then use `validate_with_cache/1` for high-performance validation.
+
+## Tail-f ACM Extension Features
+
+The library supports advanced Tail-f ACM extensions that extend RFC 8341 NACM with:
+
+### Command Rules (`cmdrule`)
+
+Command rules provide fine-grained access control for CLI and other command interfaces:
+
+```xml
+<cmdrule xmlns="http://tail-f.com/yang/acm">
+  <name>cli-show-status</name>
+  <context>cli</context>                    <!-- Context: cli, webui, api, etc. -->
+  <command>show *</command>                 <!-- Command pattern with wildcards -->
+  <access-operations>read exec</access-operations>
+  <action>permit</action>
+  <log-if-permit/>                          <!-- Log when permitted -->
+</cmdrule>
+```
+
+### Enhanced Logging Control
+
+Granular logging control with multiple directives:
+
+```xml
+<!-- Rule-level logging -->
+<log-if-permit/>     <!-- Log when this rule permits access -->
+<log-if-deny/>       <!-- Log when this rule denies access -->
+
+<!-- Global logging defaults -->
+<log-if-default-permit xmlns="http://tail-f.com/yang/acm"/>
+<log-if-default-deny xmlns="http://tail-f.com/yang/acm"/>
+```
+
+### Context-Aware Access Control
+
+Access decisions can vary by context (CLI, Web UI, API, etc.):
+- Rules can specify context patterns: `cli`, `webui`, `*` (wildcard)
+- Request context is matched against rule contexts
+- Different access decisions for same user/command in different contexts
+
+### Command Pattern Matching
+
+Flexible command matching with wildcards:
+- `show *` matches `show interfaces`, `show system status`, etc.
+- `configure *` matches all configure commands
+- Exact matches: `reboot` matches only "reboot"
+
+### Default Command Policies
+
+Separate defaults for command operations:
+```xml
+<cmd-read-default>deny</cmd-read-default>   <!-- Default for command read ops -->
+<cmd-exec-default>deny</cmd-exec-default>   <!-- Default for command exec ops -->
+```
 
 ## Development
 
@@ -383,17 +545,18 @@ See the [Testing](#testing) section above for comprehensive test coverage using 
 
 ## Dependencies
 
-- **[nacm-rust-prototype](https://github.com/etnt/nacm-rust-prototype)**: Rust NACM validation library
+- **[nacm-validator](https://github.com/etnt/nacm-validator)**: Rust NACM validation library with Tail-f ACM extensions
 - **rustler**: Rust NIF framework
 - **serde/serde_json**: JSON serialization
 - **jsx** (optional): For JSON encoding in Erlang examples
 
 ## License
 
-This project follows the same license as the nacm-rust-prototype dependency (Mozilla Public License 2.0).
+This project follows the same license as the nacm-validator dependency (Mozilla Public License 2.0).
 
 ## References
 
 - [RFC 8341 - Network Configuration Access Control Model](https://tools.ietf.org/rfc/rfc8341.txt)
-- [nacm-rust-prototype](https://github.com/etnt/nacm-rust-prototype)
+- [Tail-f ACM Extensions](https://github.com/etnt/nacm-validator/blob/tailf-acm/doc/rfc-tailf-acm-proposal.md)
+- [nacm-validator](https://github.com/etnt/nacm-validator)
 - [Rustler Documentation](https://docs.rs/rustler/)

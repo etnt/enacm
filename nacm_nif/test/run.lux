@@ -10,26 +10,30 @@
 
     # Test 1: Permit example with jsx encoding
     [invoke log "Test 1: Admin user permit example (jsx)"]
-    !nacm_nif_example:permit_example().
-    ?true
+    !{Permitted1, ShouldLog1} = nacm_nif_example:permit_example().
+    !io:format("Test 1 result: permitted=~p, should_log=~p~n", [Permitted1, ShouldLog1]).
+    ?Test 1 result: permitted=true, should_log=false
     ?$eprompt
 
     # Test 2: Deny example with jsx encoding  
     [invoke log "Test 2: Guest user deny example (jsx)"]
-    !nacm_nif_example:deny_example().
-    ?false
+    !{Permitted2, ShouldLog2} = nacm_nif_example:deny_example().
+    !io:format("Test 2 result: permitted=~p, should_log=~p~n", [Permitted2, ShouldLog2]).
+    ?Test 2 result: permitted=false, should_log=false
     ?$eprompt
 
     # Test 3: Permit example with manual JSON encoding
     [invoke log "Test 3: Admin user permit example (manual JSON)"]
-    !nacm_nif_example:permit_example_manual().
-    ?true
+    !{Permitted3, ShouldLog3} = nacm_nif_example:permit_example_manual().
+    !io:format("Test 3 result: permitted=~p, should_log=~p~n", [Permitted3, ShouldLog3]).
+    ?Test 3 result: permitted=true, should_log=false
     ?$eprompt
 
     # Test 4: Deny example with manual JSON encoding
     [invoke log "Test 4: Guest user deny example (manual JSON)"]
-    !nacm_nif_example:deny_example_manual().
-    ?false
+    !{Permitted4, ShouldLog4} = nacm_nif_example:deny_example_manual().
+    !io:format("Test 4 result: permitted=~p, should_log=~p~n", [Permitted4, ShouldLog4]).
+    ?Test 4 result: permitted=false, should_log=false
     ?$eprompt
 
     # Test 5: Direct API usage - valid request
@@ -61,16 +65,18 @@
     ?$eprompt
     !Request = "{\"user\":\"admin\",\"module_name\":null,\"rpc_name\":\"edit-config\",\"operation\":\"exec\",\"path\":null}".
     ?$eprompt
-    !nacm_nif:validate(list_to_binary(Config), list_to_binary(Request)).
-    ?true
+    !{Permitted5, ShouldLog5} = nacm_nif:validate(list_to_binary(Config), list_to_binary(Request)).
+    !io:format("Test 5 result: permitted=~p, should_log=~p~n", [Permitted5, ShouldLog5]).
+    ?Test 5 result: permitted=true, should_log=false
     ?$eprompt
 
     # Test 6: Direct API usage - invalid request
     [invoke log "Test 6: Direct API call - invalid guest request"]
     !RequestGuest = "{\"user\":\"guest\",\"module_name\":null,\"rpc_name\":\"edit-config\",\"operation\":\"exec\",\"path\":null}".
     ?$eprompt
-    !nacm_nif:validate(list_to_binary(Config), list_to_binary(RequestGuest)).
-    ?false
+    !{Permitted6, ShouldLog6} = nacm_nif:validate(list_to_binary(Config), list_to_binary(RequestGuest)).
+    !io:format("Test 6 result: permitted=~p, should_log=~p~n", [Permitted6, ShouldLog6]).
+    ?Test 6 result: permitted=false, should_log=false
     ?$eprompt
 
     # Test 7: Error handling - invalid XML config
@@ -187,6 +193,209 @@
     ?$eprompt
 
     [invoke log "All NACM NIF tests completed successfully!"]
+
+    # === TAIL-F ACM EXTENSION TESTS ===
+    [invoke log "Starting Tail-f ACM extension tests"]
+
+    # Test 15: Command rule validation - CLI context
+    [invoke log "Test 15: CLI command access control"]
+    ~TailfConfig = "<config xmlns=\"http://tail-f.com/ns/config/1.0\">
+    ~<nacm xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-acm\">
+    ~<enable-nacm>true</enable-nacm>
+    ~<read-default>deny</read-default>
+    ~<write-default>deny</write-default>
+    ~<exec-default>deny</exec-default>
+    ~<cmd-read-default xmlns=\"http://tail-f.com/yang/acm\">deny</cmd-read-default>
+    ~<cmd-exec-default xmlns=\"http://tail-f.com/yang/acm\">deny</cmd-exec-default>
+    ~<groups>
+    ~<group>
+    ~<name>operators</name>
+    ~<user-name>oper</user-name>
+    ~<gid xmlns=\"http://tail-f.com/yang/acm\">1000</gid>
+    ~</group>
+    ~</groups>
+    ~<rule-list>
+    ~<name>operator-commands</name>
+    ~<group>operators</group>
+    ~<cmdrule xmlns=\"http://tail-f.com/yang/acm\">
+    ~<name>cli-show-status</name>
+    ~<context>cli</context>
+    ~<command>show status</command>
+    ~<access-operations>read exec</access-operations>
+    ~<action>permit</action>
+    ~</cmdrule>
+    ~<cmdrule xmlns=\"http://tail-f.com/yang/acm\">
+    ~<name>deny-reboot</name>
+    ~<context>*</context>
+    ~<command>reboot</command>
+    ~<access-operations>exec</access-operations>
+    ~<action>deny</action>
+    ~</cmdrule>
+    ~</rule-list>
+    ~</nacm>
+    !</config>".
+    ?$eprompt
+
+    # Test CLI show status command - should be permitted
+    !CliShowRequest = "{\"user\":\"oper\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"read\",\"path\":null,\"context\":\"cli\",\"command\":\"show status\"}".
+    ?$eprompt
+    !{PermittedCli, ShouldLogCli} = nacm_nif:validate(list_to_binary(TailfConfig), list_to_binary(CliShowRequest)).
+    !io:format("Test 15 CLI result: permitted=~p, should_log=~p~n", [PermittedCli, ShouldLogCli]).
+    ?Test 15 CLI result: permitted=true, should_log=false
+    ?$eprompt
+
+    # Test 16: Command rule validation - deny reboot from any context
+    [invoke log "Test 16: Deny reboot command from any context"]
+    !RebootRequest = "{\"user\":\"oper\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"exec\",\"path\":null,\"context\":\"cli\",\"command\":\"reboot\"}".
+    ?$eprompt
+    !{PermittedReboot, ShouldLogReboot} = nacm_nif:validate(list_to_binary(TailfConfig), list_to_binary(RebootRequest)).
+    !io:format("Test 16 reboot result: permitted=~p, should_log=~p~n", [PermittedReboot, ShouldLogReboot]).
+    ?Test 16 reboot result: permitted=false, should_log=false
+    ?$eprompt
+
+    # Test reboot from WebUI context - should also be denied
+    !RebootWebUIRequest = "{\"user\":\"oper\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"exec\",\"path\":null,\"context\":\"webui\",\"command\":\"reboot\"}".
+    ?$eprompt
+    !nacm_nif:validate(list_to_binary(TailfConfig), list_to_binary(RebootWebUIRequest)).
+    ?false
+    ?$eprompt
+
+    # Test 17: Command rule validation - unknown command uses defaults
+    [invoke log "Test 17: Unknown command should use cmd-exec-default (deny)"]
+    !UnknownCmdRequest = "{\"user\":\"oper\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"exec\",\"path\":null,\"context\":\"cli\",\"command\":\"unknown-command\"}".
+    ?$eprompt
+    !nacm_nif:validate(list_to_binary(TailfConfig), list_to_binary(UnknownCmdRequest)).
+    ?false
+    ?$eprompt
+
+    # Test 18: Context-specific rules
+    [invoke log "Test 18: Context-specific access control"]
+    # Same user, same command, but different context should be denied (rule specifies CLI only)
+    !WebUIShowRequest = "{\"user\":\"oper\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"read\",\"path\":null,\"context\":\"webui\",\"command\":\"show status\"}".
+    ?$eprompt
+    !nacm_nif:validate(list_to_binary(TailfConfig), list_to_binary(WebUIShowRequest)).
+    ?false
+    ?$eprompt
+
+    # Test 19: Wildcard command matching
+    [invoke log "Test 19: Wildcard command pattern matching"]
+    ~WildcardConfig = "<config xmlns=\"http://tail-f.com/ns/config/1.0\">
+    ~<nacm xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-acm\">
+    ~<enable-nacm>true</enable-nacm>
+    ~<read-default>deny</read-default>
+    ~<write-default>deny</write-default>
+    ~<exec-default>deny</exec-default>
+    ~<cmd-read-default xmlns=\"http://tail-f.com/yang/acm\">deny</cmd-read-default>
+    ~<cmd-exec-default xmlns=\"http://tail-f.com/yang/acm\">deny</cmd-exec-default>
+    ~<groups>
+    ~<group>
+    ~<name>users</name>
+    ~<user-name>user1</user-name>
+    ~</group>
+    ~</groups>
+    ~<rule-list>
+    ~<name>wildcard-commands</name>
+    ~<group>users</group>
+    ~<cmdrule xmlns=\"http://tail-f.com/yang/acm\">
+    ~<name>show-commands</name>
+    ~<context>cli</context>
+    ~<command>show *</command>
+    ~<access-operations>read</access-operations>
+    ~<action>permit</action>
+    ~</cmdrule>
+    ~</rule-list>
+    ~</nacm>
+    !</config>".
+    ?$eprompt
+
+    # Test show interfaces (should match "show *")
+    !ShowInterfacesRequest = "{\"user\":\"user1\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"read\",\"path\":null,\"context\":\"cli\",\"command\":\"show interfaces\"}".
+    ?$eprompt
+    !nacm_nif:validate(list_to_binary(WildcardConfig), list_to_binary(ShowInterfacesRequest)).
+    ?true
+    ?$eprompt
+
+    # Test show system status (should match "show *")
+    !ShowSystemRequest = "{\"user\":\"user1\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"read\",\"path\":null,\"context\":\"cli\",\"command\":\"show system status\"}".
+    ?$eprompt
+    !nacm_nif:validate(list_to_binary(WildcardConfig), list_to_binary(ShowSystemRequest)).
+    ?true
+    ?$eprompt
+
+    # Test configure command (should not match "show *")
+    !ConfigureRequest = "{\"user\":\"user1\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"exec\",\"path\":null,\"context\":\"cli\",\"command\":\"configure terminal\"}".
+    ?$eprompt
+    !nacm_nif:validate(list_to_binary(WildcardConfig), list_to_binary(ConfigureRequest)).
+    ?false
+    ?$eprompt
+
+    # Test 20: Logging functionality with log-if-permit and log-if-deny
+    [invoke log "Test 20: Logging functionality - rules with logging flags"]
+    ~LoggingConfig = "<config xmlns=\"http://tail-f.com/ns/config/1.0\">
+    ~<nacm xmlns=\"urn:ietf:params:xml:ns:yang:ietf-netconf-acm\">
+    ~<enable-nacm>true</enable-nacm>
+    ~<read-default>deny</read-default>
+    ~<write-default>deny</write-default>
+    ~<exec-default>deny</exec-default>
+    ~<cmd-read-default xmlns=\"http://tail-f.com/yang/acm\">deny</cmd-read-default>
+    ~<cmd-exec-default xmlns=\"http://tail-f.com/yang/acm\">deny</cmd-exec-default>
+    ~<log-if-default-permit xmlns=\"http://tail-f.com/yang/acm\"/>
+    ~<log-if-default-deny xmlns=\"http://tail-f.com/yang/acm\"/>
+    ~<groups>
+    ~<group>
+    ~<name>log-test-users</name>
+    ~<user-name>loguser</user-name>
+    ~</group>
+    ~</groups>
+    ~<rule-list>
+    ~<name>logging-test</name>
+    ~<group>log-test-users</group>
+    ~<cmdrule xmlns=\"http://tail-f.com/yang/acm\">
+    ~<name>permit-with-log</name>
+    ~<context>cli</context>
+    ~<command>show version</command>
+    ~<access-operations>read</access-operations>
+    ~<action>permit</action>
+    ~<log-if-permit/>
+    ~</cmdrule>
+    ~<cmdrule xmlns=\"http://tail-f.com/yang/acm\">
+    ~<name>deny-with-log</name>
+    ~<context>cli</context>
+    ~<command>delete config</command>
+    ~<access-operations>exec</access-operations>
+    ~<action>deny</action>
+    ~<log-if-deny/>
+    ~</cmdrule>
+    ~</rule-list>
+    ~</nacm>
+    !</config>".
+    ?$eprompt
+
+    # Test permit with logging
+    !PermitLogRequest = "{\"user\":\"loguser\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"read\",\"path\":null,\"context\":\"cli\",\"command\":\"show version\"}".
+    ?$eprompt
+    !{PermittedLog, ShouldLogPermit} = nacm_nif:validate(list_to_binary(LoggingConfig), list_to_binary(PermitLogRequest)).
+    !io:format("Permit with log: permitted=~p, should_log=~p~n", [PermittedLog, ShouldLogPermit]).
+    ?Permit with log: permitted=true, should_log=true
+    ?$eprompt
+
+    # Test deny with logging
+    !DenyLogRequest = "{\"user\":\"loguser\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"exec\",\"path\":null,\"context\":\"cli\",\"command\":\"delete config\"}".
+    ?$eprompt
+    !{PermittedDeny, ShouldLogDeny} = nacm_nif:validate(list_to_binary(LoggingConfig), list_to_binary(DenyLogRequest)).
+    !io:format("Deny with log: permitted=~p, should_log=~p~n", [PermittedDeny, ShouldLogDeny]).
+    ?Deny with log: permitted=false, should_log=true
+    ?$eprompt
+
+    # Test default policy with logging (unknown command should use defaults)
+    !DefaultLogRequest = "{\"user\":\"loguser\",\"module_name\":null,\"rpc_name\":null,\"operation\":\"exec\",\"path\":null,\"context\":\"cli\",\"command\":\"unknown command\"}".
+    ?$eprompt
+    !{PermittedDefault, ShouldLogDefault} = nacm_nif:validate(list_to_binary(LoggingConfig), list_to_binary(DefaultLogRequest)).
+    !io:format("Default with log: permitted=~p, should_log=~p~n", [PermittedDefault, ShouldLogDefault]).
+    ?Default with log: permitted=false, should_log=true
+    ?$eprompt
+
+    [invoke log "All Tail-f ACM extension tests completed successfully!"]
     !erlang:halt().
 
 [cleanup]

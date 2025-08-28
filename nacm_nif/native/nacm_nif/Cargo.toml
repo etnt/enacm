@@ -12,7 +12,7 @@ crate-type = ["cdylib"]
 rustler = "0.36.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-nacm-rust-prototype = { path = "../../../nacm-rust-prototype" }
+nacm-validator = { path = "../../../nacm-validator" }
 
 [profile.release]
 lto = true
