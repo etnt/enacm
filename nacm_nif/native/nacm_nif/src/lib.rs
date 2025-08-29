@@ -24,7 +24,7 @@ struct SerializableAccessRequest {
 
 impl SerializableAccessRequest {
     /// Convert to AccessRequest with borrowed strings and handle context separately
-    fn to_access_request_and_context(&self) -> Result<(AccessRequest, Option<RequestContext>), String> {
+    fn to_access_request_and_context(&self) -> Result<(AccessRequest<'_>, Option<RequestContext>), String> {
         let operation = match self.operation.as_str() {
             "read" => Operation::Read,
             "create" => Operation::Create,
