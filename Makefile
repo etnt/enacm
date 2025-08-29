@@ -46,7 +46,7 @@ arch-info:
 
 # Clone the nacm-validator repo if not already present
 nacm-validator:
-	git clone -b tailf-acm $(NACM_VALIDATOR_REPO)
+	git clone $(NACM_VALIDATOR_REPO)
 
 # Build the nacm_nif Erlang NIF (using rebar3)
 nif: nacm-validator
